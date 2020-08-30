@@ -9,11 +9,13 @@ ROOT_FOLDER_NAME = -> Meteor.settings.folder or process.env.DRIVE_ROOT_FOLDER or
 CODEX_ACCOUNT = -> Meteor.settings.driveowner or process.env.DRIVE_OWNER_ADDRESS
 WORKSHEET_NAME = (name) -> "Worksheet: #{name}"
 DOC_NAME = (name) -> "Notes: #{name}"
+JAM_NAME = (name) -> "Whiteboard: #{name}"
 
 # Constants
 GDRIVE_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder'
 GDRIVE_SPREADSHEET_MIME_TYPE = 'application/vnd.google-apps.spreadsheet'
 GDRIVE_DOC_MIME_TYPE = 'application/vnd.google-apps.document'
+GDRIVE_JAM_MIME_TYPE = 'application/vnd.google-apps.jam'
 XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 MAX_RESULTS = 200
 SPREADSHEET_TEMPLATE = Assets.getBinary 'spreadsheet-template.xlsx'
@@ -77,6 +79,11 @@ docSettings =
   driveMimeType: GDRIVE_DOC_MIME_TYPE
   uploadMimeType: 'text/plain'
   uploadTemplate: -> 'Put notes here.'
+
+jamSettings =
+  titleFunc: JAM_NAME
+  driveMimeType: GDRIVE_JAM_MIME_TYPE
+  uploadMimeType: GDRIVE_JAM_MIME_TYPE
   
 ensure = (drive, name, folder, settings) ->
   doc = (await drive.files.list
@@ -88,12 +95,14 @@ ensure = (drive, name, folder, settings) ->
       name: settings.titleFunc name
       mimeType: settings.driveMimeType
       parents: [id: folder.id]
-    doc = (await drive.files.create
+    body =
       resource: doc
-      media:
+    if settings.uploadTemplate?
+      body.convert = true
+      body.media =
         mimeType: settings.uploadMimeType
         body: settings.uploadTemplate()
-    ).data
+    doc = (await drive.files.create body).data
   await ensurePermissions drive, doc.id
   doc
 
@@ -188,11 +197,13 @@ export class Drive
     # is the spreadsheet already there?
     spreadsheetP = ensure @drive, name, folder, spreadsheetSettings
     docP = ensure @drive, name, folder, docSettings
-    [spreadsheet, doc, p] = Promise.await Promise.all [spreadsheetP, docP, permissionsPromise]
+    jamP = ensure @drive, name, folder, jamSettings
+    [spreadsheet, doc, jam, p] = Promise.await Promise.all [spreadsheetP, docP, jamP, permissionsPromise]
     return {
       id: folder.id
       spreadId: spreadsheet.id
       docId: doc.id
+      jamId: jam.id
     }
 
   findPuzzle: (name) ->
@@ -209,11 +220,15 @@ export class Drive
     docP = @drive.files.list
       q: "name=#{quote DOC_NAME name} and #{quote folder.id} in parents"
       pageSize: 1
-    [spread, doc] = Promise.await Promise.all [spreadP, docP]
+    jamP = @drive.files.list
+      q: "name=#{quote JAM_NAME name} and #{quote folder.id} in parents"
+      pageSize: 1
+    [spread, doc, jam] = Promise.await Promise.all [spreadP, docP, jamP]
     return {
       id: folder.id
       spreadId: spread.data.files[0]?.id
       docId: doc.data.files[0]?.id
+      jamId: jam.data.files[0]?.id
     }
 
   listPuzzles: ->
@@ -229,7 +244,7 @@ export class Drive
       break unless resp.nextPageToken?
     results
 
-  renamePuzzle: (name, id, spreadId, docId) ->
+  renamePuzzle: (name, id, spreadId, docId, jamId) ->
     ps = [@drive.files.update
       fileId: id
       resource:
@@ -246,6 +261,12 @@ export class Drive
         fileId: docId
         resource:
           name: DOC_NAME name
+      )
+    if jamId?
+      ps.push(@drive.files.update
+        fileId: jamId
+        resource:
+          name: JAM_NAME name
       )
     Promise.await Promise.all ps
     'ok'
