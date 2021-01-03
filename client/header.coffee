@@ -580,11 +580,14 @@ RECENT_GENERAL_LIMIT = 2
 ############## chat log in header ####################
 Template.header_lastchats.helpers
   lastchats: ->
-    m = model.Messages.find {
-      room_name: "general/0", system: {$ne: true}, bodyIsHtml: {$ne: true}
+    query = if Session.equals('room_name', 'general/0')
+      'oplog/0'
+    else
+      $in: ['oplog/0', 'general/0']
+    console.log query
+    model.Messages.find {
+      room_name: query, system: {$ne: true}, bodyIsHtml: {$ne: true}, nick: {$ne: botuser()}
     }, {sort: [["timestamp","desc"]], limit: RECENT_GENERAL_LIMIT}
-    m = m.fetch().reverse()
-    return m
   msgbody: ->
     if this.bodyIsHtml then new Spacebars.SafeString(this.body) else this.body
   roomname: -> settings.GENERAL_ROOM_NAME
@@ -593,4 +596,6 @@ Template.header_lastchats.helpers
 Template.header_lastchats.onCreated ->
   return if settings.BB_DISABLE_RINGHUNTERS_HEADER
   @autorun =>
-    @subscribe 'recent-header-messages'
+    console.log Session.get('room_name'), Session.equals('room_name', 'general/0')
+    this.subscribe 'recent-messages', 'oplog/0', 2
+    @subscribe 'recent-header-messages' unless Session.equals('room_name', 'general/0')

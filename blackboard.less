@@ -40,7 +40,7 @@
           border-radius: @radius;
 }
 
-@navbar-height: 101px; /* was 69px */
+@navbar-height: 80px;
 
 body {
   background: url('/img/grid_noise.png');
@@ -221,15 +221,13 @@ body.has-emojis {
 
 #bb-body {
   padding-top: @navbar-height;
-  &.compactHeader { padding-top: @navbar-height - 21px; }
 }
 
 .bb-buttonbar {
   display: flex;
-  flex-direction: column;
   text-align: right;
   padding-right: 5px;
-  .compactHeader & { flex-direction: row; }
+  flex-direction: row;
   .btn-group { text-align: left; }
   .btn-toolbar { margin-top: 0; margin-bottom: 0; }
   .tooltip-inner {
@@ -262,13 +260,19 @@ body.has-emojis {
   }
   &, .messageRow { .ellipsis; }
 }
-.bb-lastchat .messageRow {
-  margin-top: 0;
-  margin-bottom: 0;
-  font: 90%;
-  line-height: 1.25;
+.bb-lastchat {
+  .messageRow {
+    margin-top: 0;
+    margin-bottom: 0;
+    font: 90%;
+    line-height: 1.25;
+  }
+  .center {
+    display: flex;
+    flex-direction: column-reverse;
+  }
+  & > .right { line-height: 16px; }
 }
-.bb-lastchat > .right { line-height: 16px; }
 .bb-lastchat, .bb-lastupdate {
   .timestamp { color: #555; }
 }
@@ -630,10 +634,7 @@ input[type=color] {
     position: absolute;
   }
   #messages {
-    padding-top: @navbar-height - 20px;
-    .compactHeader & {
-      padding-top: 22px;
-    }
+    padding-top: @navbar-height;
     /* Need this amount of specificity to override .row-fluid rule. */
     #bb-body .bb-splitter & { padding-top: 0px; }
   }
@@ -643,7 +644,7 @@ input[type=color] {
     padding-top: 0px;
     padding-bottom: 0;
     #bb-content > #bb-blackboard {
-      padding-top: @navbar-height - 40px;
+      padding-top: @navbar-height - 20px;
     }
   }
   .bb-hide-status {
@@ -712,7 +713,7 @@ input[type=color] {
     display: none;
   }
   #bb-body #bb-content > #bb-blackboard {
-    padding-top: @navbar-height - 40px;
+    padding-top: @navbar-height - 20px;
   }
 }
 

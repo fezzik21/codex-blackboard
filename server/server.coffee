@@ -1,6 +1,7 @@
 'use strict'
 model = share.model # import
 import { Settings } from '/lib/imports/settings.coffee'
+import canonical from '/lib/imports/canonical.coffee'
 
 puzzleQuery = (query) -> 
   model.Puzzles.find query,
@@ -154,7 +155,10 @@ Meteor.publish 'recent-header-messages', loginRequired ->
     system: $ne: true
     bodyIsHtml: $ne: true
     deleted: $ne: true
-    $or: [ {to: null}, {to: @userId}, {nick: @userId }]
+    $and: [
+      {nick: {$ne: canonical(share.BOTNAME)}},
+      {$or: [ {to: null}, {to: @userId}, {nick: @userId }]}
+    ]
   ,
     sort: [['timestamp', 'desc']]
     limit: 2
