@@ -192,6 +192,9 @@ unassigned_helper = ->
     puzzle = model.Puzzles.findOne({_id: id, feedsInto: {$size: 0}, puzzles: {$exists: false}})
     continue unless puzzle?
     { _id: id, puzzle: puzzle }
+  dontAlphabetSort = 'true' is reactiveLocalStorage.getItem 'dontAlphabetSort'
+  if !dontAlphabetSort
+    p.sort (a, b) -> return if a.puzzle.name < b.puzzle.name then -1 else 1
   editing = Meteor.userId() and (Session.get 'canEdit')
   hideSolved = 'true' is reactiveLocalStorage.getItem 'hideSolved'
   showOld = 'true' is reactiveLocalStorage.getItem 'showOld'
@@ -222,7 +225,7 @@ Template.blackboard.helpers
 Template.blackboard_status_grid.helpers
   rounds: round_helper
   metas: meta_helper
-  unassigned: -> 
+  unassigned: ->
     for id, index in this.puzzles
       puzzle = model.Puzzles.findOne({_id: id, feedsInto: {$size: 0}, puzzles: {$exists: false}})
       continue unless puzzle?
@@ -233,6 +236,9 @@ Template.blackboard_status_grid.helpers
       puzzle_num: 1 + index
       puzzle: model.Puzzles.findOne(id) or { _id: id }
     } for id, index in ps)
+    dontAlphabetSort = 'true' is reactiveLocalStorage.getItem 'dontAlphabetSort'
+    if !dontAlphabetSort
+      p.sort (a, b) -> return if a.puzzle.name < b.puzzle.name then -1 else 1
     return p
   stuck: share.model.isStuck
 
@@ -242,7 +248,7 @@ Template.blackboard.onRendered ->
     @$('.bb-menu-drawer').modal 'hide'
   @$('.bb-menu-drawer').on 'show', => document.addEventListener 'keydown', @escListener
   @$('.bb-menu-drawer').on 'hide', => document.removeEventListener 'keydown', @escListener
-    
+
 
 Template.blackboard.onDestroyed ->
   @$('.bb-menu-drawer').off 'show'
@@ -381,7 +387,7 @@ moveAfterNext = (match, rel, event, template) ->
   args = {}
   args[rel] = nextRow[0].dataset.puzzleId
   Meteor.call 'moveWithinRound', row[0]?.dataset.puzzleId, Template.parentData()._id, args
-      
+
 Template.blackboard_unassigned.events
   'click tbody.unassigned tr.puzzle .bb-move-up': moveBeforePrevious.bind null, 'tr.puzzle', 'before'
   'click tbody.unassigned tr.puzzle .bb-move-down': moveAfterNext.bind null, 'tr.puzzle', 'after'
@@ -430,7 +436,7 @@ processBlackboardEdit =
       object: id
       fields: link: text
 
-moveWithinMeta = (pos) -> (event, template) -> 
+moveWithinMeta = (pos) -> (event, template) ->
   meta = template.data
   Meteor.call 'moveWithinMeta', @puzzle._id, meta.puzzle._id, pos: pos
 
@@ -467,6 +473,9 @@ Template.blackboard_meta.helpers
       _id: id
       puzzle: model.Puzzles.findOne(id) or { _id: id }
     } for id, index in this.puzzle.puzzles)
+    dontAlphabetSort = 'true' is reactiveLocalStorage.getItem 'dontAlphabetSort'
+    if !dontAlphabetSort
+      p.sort (a, b) -> return if a.puzzle.name < b.puzzle.name then -1 else 1
     editing = Meteor.userId() and (Session.get 'canEdit')
     hideSolved = 'true' is reactiveLocalStorage.getItem 'hideSolved'
     return p if editing or !hideSolved
