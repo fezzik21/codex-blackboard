@@ -1386,6 +1386,12 @@ doc_id_to_link = (id) ->
       ,
         $set: "votes.#{@userId}": {canon: option, timestamp: UTCNow()}
 
+    getRootFolder: ->
+      check @userId, NonEmptyString
+      return unless Meteor.isServer
+      # Return special folder used for uploads to general Ringhunters chat
+      return share.drive.rootFolder
+
     getRinghuntersFolder: ->
       check @userId, NonEmptyString
       return unless Meteor.isServer

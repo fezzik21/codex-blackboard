@@ -15,6 +15,7 @@ Template.registerHelper 'nCols', ->
 
 Template.registerHelper 'compactMode', compactMode
 Template.registerHelper 'hideSolved', -> 'true' is reactiveLocalStorage.getItem 'hideSolved'
+Template.registerHelper 'showOld', -> 'true' is reactiveLocalStorage.getItem 'showOld'
 Template.registerHelper 'hideSolvedFaves', -> 'true' is reactiveLocalStorage.getItem 'hideSolvedFaves'
 Template.registerHelper 'hideSolvedMeta', -> 'true' is reactiveLocalStorage.getItem 'hideSolvedMeta'
 Template.registerHelper 'hideStatus', -> 'true' is reactiveLocalStorage.getItem 'hideStatus'
@@ -33,6 +34,8 @@ Template.options_dropdown.events
     event.stopPropagation()
   'change .bb-hide-solved input': (event, template) ->
     reactiveLocalStorage.setItem 'hideSolved', event.target.checked
+  'change .bb-show-old input': (event, template) ->
+    reactiveLocalStorage.setItem 'showOld', event.target.checked
   'change .bb-hide-solved-meta input': (event, template) ->
     reactiveLocalStorage.setItem 'hideSolvedMeta', event.target.checked
   'change .bb-hide-solved-faves input': (event, template) ->

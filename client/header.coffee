@@ -373,6 +373,9 @@ Template.header_breadcrumbs.onCreated ->
     Meteor.call 'getRinghuntersFolder', (error, f) ->
       unless error?
         Session.set 'RINGHUNTERS_FOLDER', (f or undefined)
+    Meteor.call 'getRootFolder', (error, r) ->
+      unless error?
+        Session.set 'ROOT_FOLDER', (r or undefined)
 
 Template.header_breadcrumbs.helpers
   breadcrumbs: -> breadcrumbs_var.get()
@@ -388,6 +391,8 @@ Template.header_breadcrumbs.helpers
       Session.get 'RINGHUNTERS_FOLDER'
     when 'puzzles'
       model.Puzzles.findOne(Session.get 'id')?.drive
+  driveRoot: ->
+      Session.get 'ROOT_FOLDER' 
 
 Template.header_breadcrumbs.events
   "click .bb-upload-file": (event, template) ->

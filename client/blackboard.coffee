@@ -195,8 +195,11 @@ unassigned_helper = ->
     { _id: id, puzzle: puzzle }
   editing = Meteor.userId() and (Session.get 'canEdit')
   hideSolved = 'true' is reactiveLocalStorage.getItem 'hideSolved'
-  return p if editing or !hideSolved
-  p.filter (pp) -> !pp.puzzle.solved?
+  showOld = 'true' is reactiveLocalStorage.getItem 'showOld'
+  newP = p.filter (pp) -> showOld or !(/\(OLD\)/.test(pp.puzzle.name))
+  newPSorted = newP.sort( (a, b) => (a.puzzle.name < b.puzzle.name) )
+  return newPSorted if editing or !hideSolved
+  newPSorted.filter (pp) -> !pp.puzzle.solved?
 
 ############## groups, rounds, and puzzles ####################
 Template.blackboard.helpers
@@ -350,7 +353,7 @@ Template.blackboard_round.helpers
         num_puzzles: puzzle.puzzles.length
         num_solved: model.Puzzles.find({_id: {$in: puzzle.puzzles}, solved: {$ne: null}}).length
       }
-    r.reverse() if 'true' is reactiveLocalStorage.getItem 'sortReverse'
+    #r.reverse() if 'true' is reactiveLocalStorage.getItem 'sortReverse'
     return r
   unassigned: unassigned_helper
 
