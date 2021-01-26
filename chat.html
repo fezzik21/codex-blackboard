@@ -7,15 +7,6 @@
       {{> puzzle_callin_modal}}
       {{> puzzle_summon_modal}}
     {{/with}}
-  <div class="bb-chat-callin {{#if solved}}solved{{/if}}">
-    {{#if solved}}Solved
-    {{else}}
-      {{#with object}}
-        {{> puzzle_callin_button}}
-        {{> puzzle_summon_button}}
-      {{/with}}
-    {{/if}}
-  </div>
   {{/if}}
   <div class="navbar navbar-inverse navbar-fixed-bottom bb-chat-footer">
     <div class="navbar-inner">
@@ -35,7 +26,7 @@
         <tbody>
           {{#each whos_here}}
           <tr>
-            <td class="bb-avatar">{{gravatar id=email size=48}}</td>
+            <td class="bb-avatar">{{>gravatar nick=nick size=48}}</td>
             <td>{{nickAndName nick}}</td>
             <td>{{nickLocation nick}}</td>
           </tr>
@@ -49,13 +40,34 @@
         <i class="fas fa-address-card"></i>
       </button>
       {{#if canJitsi}}
-        <button class="btn btn-mini btn-inverse bb-join-jitsi" title="Connect to Jitsi meeting.{{#if otherJitsi}} This will diconnect another tab from its meeting.{{/if}}">
+        <button class="btn btn-mini btn-inverse bb-join-jitsi" title="Connect to Jitsi meeting.{{#if otherJitsi}} This will disconnect another tab from its meeting.{{/if}}">
           <i class="fas fa-video"></i>
         </button>
       {{/if}}
       {{> messages_input }}
     </div>
+<<<<<<< HEAD
     <!--<div id="bb-jitsi-container"></div>-->
+=======
+    <div id="bb-jitsi-container">
+      {{#if inJitsi}}
+        <div class="bb-pin-overlay">
+          <a href="#" class="{{#if jitsiPinSet}}bb-jitsi-unpin {{#if usingJitsiPin}}bb-jitsi-pin-used{{/if}}{{else}}bb-jitsi-pin{{/if}}"
+            title="{{#if usingJitsiPin}}You are pinned to the Jitsi meeting for {{pinnedRoomName}}.
+Clicking here will join the meeting for your current page.
+            {{else if jitsiPinSet}}You are pinned to the Jitsi meeting for this page.
+You will stay in this meeting if you navigate to another page.
+            {{else}}If you navigate to another page you will join the Jitsi meeting for that page.
+Click here to stay in this meeting instead.{{/if}}">
+            {{#if usingJitsiPin}}{{pinnedRoomName}}{{/if}}
+            <i class="fas fa-thumbtack"></i>
+          </a>
+          <a href="#" class="bb-jitsi-cap-height {{#if jitsiHeightCapped}}capped{{/if}}" title="Limit jitsi meeting to 50 pixels high"><i class="fas fa-compress-alt"></i></a>
+          <a href="{{jitsiUrl}}" class="bb-pop-jitsi" target="jitsi" title="Open this meeting in another tab"><i class="fas fa-external-link-alt"></i></a>
+        </div>
+      {{/if}}
+    </div>
+>>>>>>> 41c537c5efdb784d6c18d0d155cd8e3ef194c232
   </div>
 </template>
 
@@ -101,9 +113,9 @@
     {{#if message.tweet}}
       <img src="{{message.tweet.avatar}}" class="media-object pull-left img-rounded" width=48 height=48>
     {{else if message.mail}}
-       {{gravatar id=message.nick size=48 classes="media-object pull-left img-rounded" }}
+       {{>gravatar_hash gravatar_md5=(md5 message.nick) size=48 classes="media-object pull-left img-rounded" }}
     {{else}}
-      {{gravatar id=email size=48 classes="media-object pull-left img-rounded" }}
+      {{>gravatar nick=message.nick size=48 classes="media-object pull-left img-rounded" }}
     {{/if}}
     <div class="media-body bb-message-body">
       <div class="pull-right timestamp">{{pretty_ts message.timestamp}}</div>
@@ -142,7 +154,7 @@
           <td class="option"><button class="btn btn-mini {{#if yours}}active{{/if}}" data-option="{{_id}}">{{text}}</button></td>
           <td class="results">
             {{#if show_votes}}
-              {{#each votes}}{{gravatar id=email size=20 title=(nickOrName _id)}}{{/each}}
+              {{#each votes}}{{>gravatar nick=_id size=20 title=(nickOrName _id)}}{{/each}}
             {{else}}
               <div class="progress"><div class="bar {{#if leading}}bar-success{{/if}}" style="width: {{width}}%">{{votes.length}}</div></div>
             {{/if}}
@@ -170,7 +182,7 @@
       {{else if message.presence}}
         {{#unless presence_too_old}}
           <div class="bb-message-presence {{message.presence}}" title="{{pretty_ts message.timestamp}}: {{cleanup message.body}}" data-read="{{#unless read}}un{{/unless}}read">
-            {{gravatar id=email size=14 }}{{message.nick}}
+            {{>gravatar nick=message.nick size=14 }}{{message.nick}}
           </div>
         {{/unless}}
       {{else if message.system}}
@@ -184,7 +196,7 @@
           <div class="bb-message-action" data-nick="{{message.nick}}" data-read="{{#unless read}}un{{/unless}}read">
             <div class="pull-right timestamp">{{pretty_ts message.timestamp}}</div>
             {{> message_delete_button}}
-            {{gravatar id=email size=14 }}
+            {{>gravatar nick=message.nick size=14 }}
             <span title="{{message.nick}}{{nickLocation message.nick}}" class="{{#if nickNear message.nick}}near{{/if}}">{{nickOrName message.nick}}</span> {{cleanup message.body}}
           </div>
         {{else}}

@@ -56,11 +56,6 @@ LastAnswer = BBCollection.last_answer = \
 #   sort_key: timestamp. Initially created, but can be traded to other rounds.
 #   touched: timestamp -- records edits to tag, order, group, etc.
 #   touched_by: canon of Nick with last touch
-#   solved:  timestamp -- null (not missing or zero) if not solved
-#            (actual answer is in a tag w/ name "Answer")
-#   solved_by:  timestamp of Nick who confirmed the answer
-#   incorrectAnswers: [ { answer: "Wrong", who: "answer submitter",
-#                         backsolve: ..., provided: ..., timestamp: ... }, ... ]
 #   tags: status: { name: "Status", value: "stuck" }, ... 
 #   puzzles: [ array of puzzle _ids, in order ]
 #            Preserving order is why this is a list here and not a foreign key
@@ -87,8 +82,6 @@ if Meteor.isServer
 #   solverTime: aggregate milliseconds spent in chat while not solved.
 #               Derived from chat presence, so more frequent checkins give
 #               higher accuracy.
-#   incorrectAnswers: [ { answer: "Wrong", who: "answer submitter",
-#                         backsolve: ..., provided: ..., timestamp: ... }, ... ]
 #   tags: status: { name: "Status", value: "stuck" }, ... 
 #   drive: optional google drive folder id
 #   spreadsheet: optional google spreadsheet id
@@ -131,6 +124,7 @@ if Meteor.isServer
 #   backsolve: true/false
 #   provided: true/false
 #   status: one of 'pending', 'accepted', 'rejected', or 'cancelled'.
+#   resolved: (optional) timestamp when status became not pending.
 #   response: (optional) response from HQ to this callin
 CallIns = BBCollection.callins = new Mongo.Collection "callins"
 if Meteor.isServer
@@ -189,6 +183,7 @@ if Meteor.isServer
 #   oplog:  boolean (true for semi-automatic operation log message)
 #   presence: optional string ('join'/'part' for presence-change only)
 #   bot_ignore: optional boolean (true for messages from e.g. email or twitter)
+#   header_ignore: optional boolean (don't show in header)
 #   to:   destination of pm (optional)
 #   poll: _id of poll (optional)
 #   starred: boolean. Pins this message to the top of the puzzle page or blackboard.
@@ -477,7 +472,6 @@ doc_id_to_link = (id) ->
         "#{puzzle_prefix}#{canonical(args.name)}"
       feedsInto = args.feedsInto or []
       extra =
-        incorrectAnswers: []
         solved: null
         solved_by: null
         drive: args.drive or null
@@ -690,7 +684,9 @@ doc_id_to_link = (id) ->
         provided: !!args.provided
         status: 'pending'
       , {suppressLog:true}
-      msg = action: true
+      msg =
+        action: true
+        header_ignore: true
       # send to the general chat
       msg.body = body(specifyPuzzle: true)
       unless args?.suppressRoom is "general/0"
@@ -770,7 +766,9 @@ doc_id_to_link = (id) ->
           body: "reports that #{provided}#{backsolve}#{callin.answer.toUpperCase()} is CORRECT!"
       else
         check response, Match.Optional String
-        updateBody = status: 'accepted'
+        updateBody =
+          status: 'accepted'
+          resolved: UTCNow()
         extra = if response?
           updateBody.response = response
           " with response \"#{response}\""
@@ -794,7 +792,7 @@ doc_id_to_link = (id) ->
       # one message to the general chat
       delete msg.room_name
       msg.body += " (#{puzzle.name})" if puzzle?.name?
-      Meteor.call 'newMessage', msg
+      Meteor.call 'newMessage', {msg..., header_ignore: true}
 
       if callin.callin_type is callin_types.ANSWER
         # one message to the each metapuzzle's chat
@@ -827,7 +825,9 @@ doc_id_to_link = (id) ->
         throw new Meteor.Error(400, 'expected callback can\'t be incorrect')
       else
         check response, Match.Optional String
-        updateBody = status: 'rejected'
+        updateBody =
+          status: 'rejected'
+          resolved: UTCNow()
         extra = if response?
           updateBody.response = response
           " with response \"#{response}\""
@@ -850,7 +850,7 @@ doc_id_to_link = (id) ->
       # one message to the general chat
       delete msg.room_name
       msg.body += " (#{puzzle.name})" if puzzle.name?
-      Meteor.call 'newMessage', msg
+      Meteor.call 'newMessage', {msg..., header_ignore: true}
       puzzle.feedsInto.forEach (meta) ->
         msg.room_name = "puzzles/#{meta}"
         Meteor.call 'newMessage', msg
@@ -866,7 +866,9 @@ doc_id_to_link = (id) ->
         oplog "Canceled call-in of #{callin.answer} for", 'puzzles', \
             callin.target, @userId
       CallIns.update _id: args.id, status: 'pending',
-        $set: status: 'cancelled'
+        $set:
+          status: 'cancelled'
+          resolved: UTCNow()
 
     locateNick: (args) ->
       check @userId, NonEmptyString
@@ -915,6 +917,7 @@ doc_id_to_link = (id) ->
         room_name: Match.Optional NonEmptyString
         useful: Match.Optional Boolean
         bot_ignore: Match.Optional Boolean
+        header_ignore: Match.Optional Boolean
         suppressLastRead: Match.Optional Boolean
       return if this.isSimulation # suppress flicker
       suppress = args.suppressLastRead
@@ -1040,7 +1043,7 @@ doc_id_to_link = (id) ->
       now = UTCNow()
       # disallow modifications to the following fields; use other APIs for these
       for f in ['name','canon','created','created_by','solved','solved_by',
-               'tags','puzzles','incorrectAnswers', 'feedsInto',
+               'tags','puzzles', 'feedsInto',
                'located','located_at',
                'priv_located','priv_located_at','priv_located_order']
         delete args.fields[f]
@@ -1080,20 +1083,21 @@ doc_id_to_link = (id) ->
         type: ValidType
         object: IdOrObject
       id = args.object._id or args.object
+      name = canonical(args.name)
       # bail to deleteAnswer if this is the 'answer' tag.
-      if canonical(args.name) is 'answer'
+      if name is 'answer'
         return Meteor.call "deleteAnswer",
           type: args.type
           target: args.object
-      if canonical(args.name) is 'link'
+      if name is 'link'
         args.fields = { link: null }
         return Meteor.call 'setField', args
       args.now = UTCNow() # don't let caller lie about the time
       updateDoc = $set:
         touched: args.now
         touched_by: @userId
-      deleteTagInternal updateDoc, args.name
-      0 < collection(args.type).update id, updateDoc
+      deleteTagInternal updateDoc, name
+      0 < collection(args.type).update {_id: id, "tags.#{name}": $exists: true}, updateDoc
 
     summon: (args) ->
       check @userId, NonEmptyString
@@ -1133,6 +1137,7 @@ doc_id_to_link = (id) ->
         action: true
         bodyIsHtml: true
         body: body
+        header_ignore: true
       return
 
     unsummon: (args) ->
@@ -1163,6 +1168,7 @@ doc_id_to_link = (id) ->
       Meteor.call 'newMessage',
         action: true
         body: body
+        header_ignore: true
       return
 
     getRoundForPuzzle: (puzzle) ->
@@ -1267,9 +1273,13 @@ doc_id_to_link = (id) ->
 
       # cancel any entries on the call-in queue for this puzzle
       CallIns.update {target_type: 'puzzles', target: id, status: 'pending', callin_type: callin_types.ANSWER, answer: args.answer},
-        $set: status: 'accepted'
+        $set:
+          status: 'accepted'
+          resolved: now
       CallIns.update {target_type: 'puzzles', target: id, status: 'pending'},
-        $set: status: 'cancelled'
+        $set:
+          status: 'cancelled'
+          resolved: now
       ,
         multi: true
       return true
@@ -1292,7 +1302,9 @@ doc_id_to_link = (id) ->
       # cancel any matching entries on the call-in queue for this puzzle
       # The 'pending' status means this should be unique if present.
       CallIns.update {target_type: 'puzzles', callin_type: callin_types.ANSWER, target: id, status: 'pending', answer: args.answer},
-        $set: status: 'rejected'
+        $set:
+          status: 'rejected'
+          resolved: now
       return true
 
     deleteAnswer: (args) ->

@@ -1,7 +1,7 @@
 'use strict'
 
-import { jitsiRoom } from './imports/jitsi.coffee'
-import { nickEmail, emailFromNickObject } from './imports/nickEmail.coffee'
+import jitsiUrl, { jitsiRoom } from './imports/jitsi.coffee'
+import { gravatarUrl, hashFromNickObject } from './imports/nickEmail.coffee'
 import botuser from './imports/botuser.coffee'
 import canonical from '/lib/imports/canonical.coffee'
 import { reactiveLocalStorage } from './imports/storage.coffee'
@@ -129,7 +129,6 @@ Template.poll.onCreated ->
 
 Template.poll.helpers
   show_votes: -> Template.instance().show_votes.get()
-  email: -> nickEmail @_id
   options: ->
     poll = model.Polls.findOne @
     return unless poll?
@@ -161,7 +160,6 @@ Template.poll.events
 messageTransform = (m) ->
   _id: m._id
   message: m
-  email: nickEmail m.nick
   read: ->
     # Since a message can go from unread to read, but never the other way,
     # use a nonreactive read at first. If it's unread, then do a reactive read
@@ -360,6 +358,10 @@ Template.embedded_chat.onCreated ->
   @jitsi = new ReactiveVar null
   # Intentionally staying out of the meeting.
   @jitsiLeft = new ReactiveVar false
+  @jitsiPinType = new ReactiveVar null
+  @jitsiPinId = new ReactiveVar null
+  @jitsiType = -> @jitsiPinType.get() ? Session.get 'type'
+  @jitsiId = -> @jitsiPinId.get() ? Session.get 'id'
   @jitsiInOtherTab = ->
     jitsiTabUUID = reactiveLocalStorage.getItem 'jitsiTabUUID'
     jitsiTabUUID? and jitsiTabUUID isnt settings.CLIENT_UUID
@@ -367,18 +369,21 @@ Template.embedded_chat.onCreated ->
     @jitsiLeft.set true
     @jitsi.get()?.dispose()
     @jitsi.set null
+    @jitsiPinType.set null
+    @jitsiPinId.set null
     @jitsiRoom = null
   @unsetCurrentJitsi = ->
     if settings.CLIENT_UUID is reactiveLocalStorage.getItem 'jitsiTabUUID'
       reactiveLocalStorage.removeItem 'jitsiTabUUID'
   $(window).on('unload', @unsetCurrentJitsi)
 
-gravatarUrl = ->
-  $.gravatar(emailFromNickObject(Meteor.user()),
-    image: 'wavatar'
-    size: 200
-    secure: true
-  ).attr('src')
+jitsiRoomSubject = (type, id) ->
+  if 'puzzles' is type
+    model.Puzzles.findOne(id).name ? 'Puzzle'
+  else if '0' is id
+    settings.GENERAL_ROOM_NAME
+  else
+    'Video Call'
 
 Template.embedded_chat.onRendered ->
   @autorun =>
@@ -387,7 +392,7 @@ Template.embedded_chat.onRendered ->
     if @jitsiInOtherTab()
       @leaveJitsi()
       return
-    newRoom = jitsiRoom Session.get('type'), Session.get('id')
+    newRoom = jitsiRoom @jitsiType(), @jitsiId()
     jitsi = @jitsi.get()
     if jitsi?
       return if newRoom is @jitsiRoom
@@ -404,6 +409,7 @@ Template.embedded_chat.onRendered ->
             'fodeviceselection', 'profile', 'sharedvideo', 'settings', \
             'raisehand', 'videoquality', 'filmstrip', 'feedback', 'shortcuts', \
             'tileview', 'videobackgroundblur', 'help', 'hangup' ]
+          SHOW_CHROME_EXTENSION_BANNER: false
         configOverwrite:
           # These properties are reactive, but changing them won't make us reload the room
           # because newRoom will be the same as @jitsiRoom.
@@ -411,6 +417,7 @@ Template.embedded_chat.onRendered ->
           startWithVideoMuted: 'false' isnt reactiveLocalStorage.getItem 'startVideoMuted'
           prejoinPageEnabled: false
           enableTalkWhileMuted: false
+          'analytics.disabled': true
       )
       @jitsi.get().on 'videoConferenceLeft', =>
         @leaveJitsi()
@@ -426,18 +433,14 @@ Template.embedded_chat.onRendered ->
     return unless jitsi?
     jitsi.executeCommands
       displayName: nickAndName user
-      avatarUrl: gravatarUrl()
+      avatarUrl: gravatarUrl
+        gravatar_md5: hashFromNickObject user
+        size: 200
   # The moderator should set the conference subject.
   @autorun =>
     jitsi = @jitsi.get()
     return unless jitsi?
-    subject = if 'puzzles' is Session.get 'type'
-      model.Puzzles.findOne(Session.get 'id').name ? 'Puzzle'
-    else if '0' is Session.get 'id'
-      settings.GENERAL_ROOM_NAME
-    else
-      'Video Call'
-    jitsi.executeCommand 'subject', subject
+    jitsi.executeCommand 'subject', jitsiRoomSubject(@jitsiType(), @jitsiId())
 
 Template.embedded_chat.onDestroyed ->
   @unsetCurrentJitsi()
@@ -453,17 +456,29 @@ nickAndName = (user) ->
 Template.embedded_chat.helpers
   show_presence: -> Template.instance().show_presence.get()
   whos_here: whos_here_helper
-  email: -> nickEmail @nick
   nickAndName: (nick) ->
     user = Meteor.users.findOne canonical nick ? {nickname: nick}
     nickAndName user
+  inJitsi: -> Template.instance().jitsi.get()?
   canJitsi: ->
     return jitsiRoom(Session.get('type'), Session.get('id'))? and Template.instance().jitsiLeft.get()
   otherJitsi: -> Template.instance().jitsiInOtherTab()
   jitsiSize: ->
     # Set up dependencies
     return unless Template.instance().jitsi.get()?
-    Math.floor(share.Splitter.hsize.get() * 9 / 16)
+    sizeWouldBe = Math.floor(share.Splitter.hsize.get() * 9 / 16)
+    if 'true' is reactiveLocalStorage.getItem 'capJitsiHeight'
+      return Math.min 50, sizeWouldBe
+    sizeWouldBe
+  jitsiPinSet: -> Template.instance().jitsiPinType.get()?
+  jitsiUrl: -> jitsiUrl Session.get('type'), Session.get('id')
+  usingJitsiPin: ->
+    instance = Template.instance()
+    jitsiRoom(instance.jitsiType(), instance.jitsiId()) isnt jitsiRoom(Session.get('type'), Session.get('id'))
+  pinnedRoomName: ->
+    instance = Template.instance()
+    jitsiRoomSubject instance.jitsiType(), instance.jitsiId()
+  jitsiHeightCapped: -> 'true' is reactiveLocalStorage.getItem 'capJitsiHeight'
 
 Template.embedded_chat.events
   'click .bb-show-whos-here': (event, template) ->
@@ -472,6 +487,18 @@ Template.embedded_chat.events
   'click .bb-join-jitsi': (event, template) ->
     reactiveLocalStorage.setItem 'jitsiTabUUID', settings.CLIENT_UUID
     template.jitsiLeft.set false
+  'click .bb-pop-jitsi': (event, template) ->
+    template.leaveJitsi()
+  'click .bb-jitsi-pin': (event, template) ->
+    template.jitsiPinType.set Session.get 'type'
+    template.jitsiPinId.set Session.get 'id'
+  'click .bb-jitsi-unpin': (event, template) ->
+    template.jitsiPinType.set null
+    template.jitsiPinId.set null
+  'click .bb-jitsi-cap-height:not(.capped)': (event, template) ->
+    reactiveLocalStorage.setItem 'capJitsiHeight', true
+  'click .bb-jitsi-cap-height.capped': (event, template) ->
+    reactiveLocalStorage.setItem 'capJitsiHeight', false
 
 # Utility functions
 
@@ -574,15 +601,6 @@ scrollMessagesView = ->
     $("body").scrollTo 'max'
   # the scroll handler below will reset scrolledToBottom to be false
   instachat.scrolledToBottom = true
-
-# Event Handlers
-Template.header_loginmute.events
-  'click button.mute': (event, template) ->
-    reactiveLocalStorage.setItem 'mute', 'true' isnt reactiveLocalStorage.getItem 'mute'
-  'click button.nobot': (event, template) ->
-    reactiveLocalStorage.setItem 'nobot', 'true' isnt reactiveLocalStorage.getItem 'nobot'
-    touchSelfScroll() # ignore scroll event generated by CSS relayout
-    maybeScrollMessagesView()
 
 # ensure that we stay stuck to bottom even after images load
 imageScrollHack = window.imageScrollHack = (img) ->

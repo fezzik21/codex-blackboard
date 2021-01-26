@@ -1,7 +1,8 @@
 'use strict'
 
-import { nickEmail } from './imports/nickEmail.coffee'
+import { gravatarUrl, nickHash, md5 } from './imports/nickEmail.coffee'
 import abbrev from '../lib/imports/abbrev.coffee'
+import canonical from '/lib/imports/canonical.coffee'
 import { human_readable, abbrev as ctabbrev } from '../lib/imports/callin_types.coffee'
 import { mechanics } from '../lib/imports/mechanics.coffee'
 import { reactiveLocalStorage } from './imports/storage.coffee'
@@ -23,7 +24,6 @@ chat = share.chat # import
 Template.registerHelper "equal", (a, b) -> a is b
 Template.registerHelper "less", (a, b) -> a < b
 Template.registerHelper 'any', (a..., options) ->
-  console.log a
   a.some (x) -> x
 Template.registerHelper 'not', (a) -> not a
 
@@ -33,6 +33,7 @@ do -> for v in ['currentPage']
 Template.registerHelper 'abbrev', abbrev
 Template.registerHelper 'callinType', human_readable
 Template.registerHelper 'callinTypeAbbrev', ctabbrev
+Template.registerHelper 'canonical', canonical
 Template.registerHelper 'currentPageEquals', (arg) ->
   # register a more precise dependency on the value of currentPage
   Session.equals 'currentPage', arg
@@ -47,13 +48,11 @@ Template.registerHelper 'editing', (args..., options) ->
   return false unless Meteor.userId() and canEdit
   return Session.equals 'editing', args.join('/')
 
+Template.registerHelper 'md5', md5
+
 Template.registerHelper 'linkify', (contents) ->
   contents = chat.convertURLsToLinksAndImages(UI._escape(contents))
   return new Spacebars.SafeString(contents)
-
-Template.registerHelper 'compactHeader', ->
-  Session.equals('currentPage', 'chat') or
-  (Session.equals('type', 'general') and Session.equals('id', '0'))
 
 Template.registerHelper 'teamName', -> settings.TEAM_NAME
 
@@ -70,6 +69,35 @@ Template.registerHelper 'plural', (x) -> x != 1
 Template.registerHelper 'nullToZero', (x) -> x ? 0
 
 Template.registerHelper 'canGoFullScreen', -> $('body').get(0)?.requestFullscreen?
+
+darkModeDefault = do ->
+  darkModeQuery = window.matchMedia '(prefers-color-scheme: dark)'
+  res = new ReactiveVar darkModeQuery.matches
+  darkModeQuery.addEventListener 'change', (e) ->
+    res.set e.matches
+  res
+
+darkMode = ->
+  darkModeOverride = reactiveLocalStorage.getItem 'darkMode'
+  if darkModeOverride?
+    return darkModeOverride is 'true'
+  darkModeDefault.get()
+
+Tracker.autorun ->
+  dark = darkMode()
+  if dark
+    $('body').addClass 'darkMode'
+  else
+    $('body').removeClass 'darkMode'
+
+Template.registerHelper 'darkMode', darkMode
+
+Template.page.helpers
+  splitter: -> Session.get 'splitter'
+  topRight: -> Session.get 'topRight'
+  type: -> Session.get 'type'
+  id: -> Session.get 'id'
+  color: -> Session.get 'color'
 
 # subscribe to the all-names feed all the time
 Meteor.subscribe 'all-names'
@@ -150,23 +178,32 @@ finishSetupNotifications = ->
     share.notification.set(stream, def) unless share.notification.get(stream)?
 
 Meteor.startup ->
-  now = share.model.UTCNow() + 3
+  now = new ReactiveVar share.model.UTCNow()
+  update = do ->
+    next = now.get()
+    push = _.debounce (-> now.set next), 1000
+    (newNext) ->
+      if newNext > next
+        next = newNext
+        push()
   suppress = true
   Tracker.autorun ->
-    return if share.notification.count() is 0 # unsubscribes
-    # Limits spam if you 
-    Meteor.subscribe 'oplogs-since', now,
-      onStop: -> suppress = true
+    if share.notification.count() is 0
+      suppress = true
+      return
+    else if suppress
+      now.set share.model.UTCNow()
+    Meteor.subscribe 'oplogs-since', now.get(),
       onReady: -> suppress = false
-  share.model.Messages.find({room_name: 'oplog/0', timestamp: $gte: now}).observeChanges
-    added: (id, msg) ->
+  share.model.Messages.find({room_name: 'oplog/0', timestamp: $gt: now.get()}).observe
+    added: (msg) ->
+      update msg.timestamp
       return unless Notification?.permission is 'granted'
       return unless share.notification.get(msg.stream)
       return if suppress
-      gravatar = $.gravatar nickEmail(msg.nick),
-        image: 'wavatar'
+      gravatar = gravatarUrl
+        gravatar_md5: nickHash(msg.nick)
         size: 192
-        secure: true
       body = msg.body
       if msg.type and msg.id
         body = "#{body} #{share.model.pretty_collection(msg.type)}
@@ -178,8 +215,8 @@ Meteor.startup ->
         data = url: share.Router.urlFor msg.type, msg.id
       share.notification.notify msg.nick,
         body: body
-        tag: id
-        icon: gravatar[0].src
+        tag: msg._id
+        icon: gravatar
         data: data
   Tracker.autorun ->
     return unless allPuzzlesHandle?.ready()
@@ -244,22 +281,26 @@ BlackboardRouter = Backbone.Router.extend
 
   BlackboardPage: ->
     scrollAfter =>
-      this.Page("blackboard", "general", "0")
+      @Page "blackboard", "general", "0", true
       Session.set
+        color: 'inherit'
         canEdit: undefined
         editing: undefined
+        topRight: 'blackboard_status_grid'
 
   EditPage: ->
     scrollAfter =>
-      this.Page("blackboard", "general", "0")
+      @Page "blackboard", "general", "0", true
       Session.set
+        color: 'inherit'
         canEdit: true
         editing: undefined
+        topRight: 'blackboard_status_grid'
 
   GraphPage: -> @Page 'graph', 'general', '0'
 
   PuzzlePage: (id, view=null) ->
-    this.Page("puzzle", "puzzles", id)
+    @Page "puzzle", "puzzles", id, true
     Session.set
       timestamp: 0
       view: view
@@ -275,7 +316,10 @@ BlackboardRouter = Backbone.Router.extend
     this.Page("oplog", "oplog", "0")
 
   CallInPage: ->
-    this.Page("callins", "callins", "0")
+    @Page "callins", "callins", "0", true
+    Session.set
+      color: 'inherit'
+      topRight: null
 
   QuipPage: (id) ->
     this.Page("quip", "quips", id)
@@ -300,7 +344,7 @@ BlackboardRouter = Backbone.Router.extend
     r = share.loadtest.start which, cb
     cb(r) if r? # immediately navigate if method is synchronous
 
-  Page: (page, type, id) ->
+  Page: (page, type, id, splitter) ->
     old_room = Session.get 'room_name'
     new_room = "#{type}/#{id}"
     if old_room isnt new_room
@@ -309,6 +353,7 @@ BlackboardRouter = Backbone.Router.extend
         room_name: new_room
         limit: settings.INITIAL_CHAT_LIMIT
     Session.set
+      splitter: splitter ? false
       currentPage: page
       type: type
       id: id

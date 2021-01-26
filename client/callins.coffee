@@ -1,6 +1,6 @@
 'use strict'
 
-import { nickEmail } from './imports/nickEmail.coffee'
+import { nickHash } from './imports/nickEmail.coffee'
 import { reactiveLocalStorage } from './imports/storage.coffee'
 import * as callin_types from '/lib/imports/callin_types.coffee'
 
@@ -77,18 +77,21 @@ Template.callins_quip.events
 
 Template.callin_row.helpers
   lastAttempt: ->
-    return null unless @puzzle? and @puzzle.incorrectAnswers?.length > 0
-    attempts = @puzzle.incorrectAnswers[..]
-    attempts.sort (a,b) -> a.timestamp - b.timestamp
-    attempts[attempts.length - 1]
+    return null unless @puzzle?
+    model.CallIns.findOne {target_type: 'puzzles', target: @puzzle._id, status: 'rejected'},
+      sort: resolved: -1
+      limit: 1
+      fields: resolved: 1
+    ?.resolved
+    
   hunt_link: -> @puzzle?.link
   solved: -> @puzzle?.solved
   alreadyTried: ->
-    for wrong in @puzzle?.incorrectAnswers
-      return true if wrong.answer is @answer
-    return false
+    return unless @puzzle?
+    model.CallIns.findOne({target_type: 'puzzles', target: @puzzle._id, status: 'rejected', answer: @answer},
+      fields: {}
+    )?
   callinTypeIs: (type) -> @callin_type is type
-  nickEmail: -> nickEmail @
 
 Template.callin_row.events
   "change .bb-submitted-to-hq": (event, template) ->
