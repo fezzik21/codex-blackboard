@@ -46,7 +46,7 @@
       {{/if}}
       {{> messages_input }}
     </div>
-    <div id="bb-jitsi-container">
+    <!--<div id="bb-jitsi-container">
       {{#if inJitsi}}
         <div class="bb-pin-overlay">
           <a href="#" class="{{#if jitsiPinSet}}bb-jitsi-unpin {{#if usingJitsiPin}}bb-jitsi-pin-used{{/if}}{{else}}bb-jitsi-pin{{/if}}"
@@ -63,7 +63,7 @@ Click here to stay in this meeting instead.{{/if}}">
           <a href="{{jitsiUrl}}" class="bb-pop-jitsi" target="jitsi" title="Open this meeting in another tab"><i class="fas fa-external-link-alt"></i></a>
         </div>
       {{/if}}
-    </div>
+    </div>-->
   </div>
 </template>
 
@@ -138,8 +138,8 @@ Click here to stay in this meeting instead.{{/if}}">
         <blockquote>{{cleanup message.tweet.quote}}</blockquote>
       {{/if}}
       {{#if message.poll}}{{> poll message.poll}}{{/if}}
-    </div> 
-  </div>  
+    </div>
+  </div>
 </template>
 
 <template name="poll">
